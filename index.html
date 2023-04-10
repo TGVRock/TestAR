@@ -11,7 +11,7 @@
     <!-- symbol-sdk を読み込む -->
     <script src="https://xembook.github.io/nem2-browserify/symbol-sdk-pack-2.0.4.js"></script>
     <script>
-      NODE = "https://001symbol.blockchain-node.tech:3001"; //現在開いているページのURLがここに入ります
+      NODE = "https://vmi831828.contaboserver.net:3001"; //現在開いているページのURLがここに入ります
       sym = require("/node_modules/symbol-sdk");
       repo = new sym.RepositoryFactoryHttp(NODE);
       txRepo = repo.createTransactionRepository();
@@ -47,6 +47,7 @@
       setTimeout(() => {
         // クエリパラメータでデータが与えられている場合は自動読み込み
         const searchParams = new URLSearchParams(window.location.search);
+      console.log(searchParams);
         if (!searchParams.has('mosaicId') || !searchParams.has('netType')) {
           return;
         }
@@ -56,15 +57,15 @@
         const queryNetType = searchParams.get('netType');
         netType = -1;
         switch (queryNetType) {
-          case '104':
-          case 'main':
-            netType = "104";
-            break;
-
-          // case '152':
-          // case 'test':
-          //   netType = "152";
+          // case '104':
+          // case 'main':
+          //   netType = "104";
           //   break;
+
+          case '152':
+          case 'test':
+            netType = "152";
+            break;
 
           default:
             return;
@@ -75,16 +76,42 @@
 
     async function getOnChainImage(mosaicId, netType) {
       mosaicData = await getOnChainData(mosaicId, netType);
-      onChainDataArea = document.getElementById('chainData');
+      console.log(mosaicData);
       if (null === mosaicData) {
         onChainDataArea.setAttribute('src', 'nodata.png');
-      } else {
-        if (null === mosaicData.data || 0 === mosaicData.data.length) {
-          onChainDataArea.setAttribute('src', 'nodata.png');
-        } else {
-          onChainDataArea.setAttribute('src', mosaicData.data[0].data);
-        }
+        return;
       }
+      if (null === mosaicData.data || 0 === mosaicData.data.length) {
+        onChainDataArea.setAttribute('src', 'nodata.png');
+        return;
+      }
+      onChainDataArea = document.getElementById('chainData');
+      mosaicData.data.forEach(element => {
+        const dataType = getMimeType(element.data);
+        switch (dataType) {
+          case 'image/png;':
+          case 'image/jpeg;':
+            if (onChainDataArea.getAttribute('src') === 'nodata.png') {
+              onChainDataArea.setAttribute('src', element.data);
+            }
+            break;
+        
+          case 'audio/mpeg;':
+            const elem = document.createElement("audio");
+            elem.src = element.data;
+            elem.play();
+            break;
+        
+          default:
+            break;
+        }
+      });
+    }
+
+    function getMimeType(data) {
+      const startIdx = ('string' === typeof(data)) ? data.indexOf('data:') : -1;
+      const endIdx = (-1 < startIdx) ? data.indexOf('base64', startIdx) : -1;
+      return ((-1 < startIdx) && (-1 < endIdx)) ? data.substring(startIdx + 'data:'.length, endIdx) : null;
     }
 
     // オンチェーンデータの取得
@@ -98,7 +125,7 @@
           return null;
         }
         // オンチェーンデータの取得
-        const onChainData = await getEBPOnChainData(mosaicInfo.mosaicId, mosaicInfo.owner);
+        const onChainData = await getEBPOnChainData(mosaicInfo.mosaicId, mosaicInfo.height, mosaicInfo.owner);
         mosaicInfo.data = (null !== onChainData && 0 < onChainData.length) ? onChainData : null;
         return mosaicInfo;
       } catch (error) {
@@ -147,7 +174,7 @@
     }
 
     // オリジナルフォーマット（eternal-book-protocol）で保存したデータを取得する
-    async function getEBPOnChainData(mosaicIdStr, ownerAddress) {
+    async function getEBPOnChainData(mosaicIdStr, fromHeight, ownerAddress) {
       const PROTOCOL_NAME = 'eternal-book-protocol';  // プロトコル名
       const address = sym.Address.createFromRawAddress(ownerAddress);
       try {
@@ -162,6 +189,7 @@
             ],
             address: address,
             group: sym.TransactionGroup.Confirmed,
+            fromHeight: fromHeight,
             pageSize: 100
           }).toPromise();
           allAggTxes = allAggTxes.concat(aggTxes.data);
