@@ -7,11 +7,13 @@
     <!-- A-Frame を読み込む -->
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
     <!-- AR.js を読み込む -->
-    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <script src="https://unpkg.com/aframe-look-at-component@0.8.0/dist/aframe-look-at-component.min.js"></script>
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar-nft.js"></script>
+    <script src="https://raw.githack.com/donmccurdy/aframe-extras/master/dist/aframe-extras.loaders.min.js"></script>
     <!-- symbol-sdk を読み込む -->
     <script src="https://xembook.github.io/nem2-browserify/symbol-sdk-pack-2.0.4.js"></script>
     <script>
-      NODE = "https://001symbol.blockchain-node.tech:3001"; //現在開いているページのURLがここに入ります
+      NODE = "https://vmi831828.contaboserver.net:3001"; //現在開いているページのURLがここに入ります
       sym = require("/node_modules/symbol-sdk");
       repo = new sym.RepositoryFactoryHttp(NODE);
       txRepo = repo.createTransactionRepository();
@@ -29,24 +31,39 @@
   <body style="margin: 0; overflow: hidden">
 	  
     <!-- A-FrameにAR.jsを紐づけ、VRボタン非表示、深度バッファ追加 -->
-    <a-scene embedded arjs vr-mode-ui="enabled: false;" renderer="logarithmicDepthBuffer: true;">
+    <a-scene vr-mode-ui='enabled: false' arjs='sourceType: webcam; videoTexture: true; debugUIEnabled: false' renderer='logarithmicDepthBuffer: true; antialias: true; alpha: true'>
 	    
       <!-- マーカーの.pattファイルを読み込む -->
-      <a-marker type="pattern" url="pattern.patt">
-        <a-entity  animation="property: object3D.position.y; to: 2.5; dir: alternate; dur: 1000; loop: true"> 
-          <a-image id="chainData" src="nodata.png" width="4" height="4" position="0 -0.2 -5"></a-image>
-        </a-entity>
-      </a-marker>
+            <a-assets>
+              <a-asset-item
+                  id="animated-asset"
+                  src="empty.gltf"
+              ></a-asset-item>
+          </a-assets>
+
+              <a-entity
+                  id="entity"
+                  look-at="[gps-camera]"
+                  animation-mixer="loop: repeat"
+                  gltf-model="#animated-asset"
+                  scale="10 10 10"
+              ></a-entity>
 
       <!-- カメラを追加 -->
-      <a-entity camera></a-entity>
+      <a-camera gps-camera rotation-reader></a-camera>
     </a-scene>
   </body>
   <script>
     window.addEventListener('DOMContentLoaded', function() {
+      model = document.getElementById('entity');
+        const searchParams = new URLSearchParams(window.location.search);
+        const latitude = searchParams.get('latitude');
+        const longitude = searchParams.get('longitude');
+      model.setAttribute('gps-entity-place', 'latitude: ' + latitude + '; longitude: ' + longitude + ';');
       setTimeout(() => {
         // クエリパラメータでデータが与えられている場合は自動読み込み
         const searchParams = new URLSearchParams(window.location.search);
+      console.log(searchParams);
         if (!searchParams.has('mosaicId') || !searchParams.has('netType')) {
           return;
         }
@@ -56,15 +73,15 @@
         const queryNetType = searchParams.get('netType');
         netType = -1;
         switch (queryNetType) {
-          case '104':
-          case 'main':
-            netType = "104";
-            break;
-
-          // case '152':
-          // case 'test':
-          //   netType = "152";
+          // case '104':
+          // case 'main':
+          //   netType = "104";
           //   break;
+
+          case '152':
+          case 'test':
+            netType = "152";
+            break;
 
           default:
             return;
@@ -76,15 +93,41 @@
     async function getOnChainImage(mosaicId, netType) {
       mosaicData = await getOnChainData(mosaicId, netType);
       onChainDataArea = document.getElementById('chainData');
+      console.log(mosaicData);
       if (null === mosaicData) {
         onChainDataArea.setAttribute('src', 'nodata.png');
-      } else {
-        if (null === mosaicData.data || 0 === mosaicData.data.length) {
-          onChainDataArea.setAttribute('src', 'nodata.png');
-        } else {
-          onChainDataArea.setAttribute('src', mosaicData.data[0].data);
-        }
+        return;
       }
+      if (null === mosaicData.data || 0 === mosaicData.data.length) {
+        onChainDataArea.setAttribute('src', 'nodata.png');
+        return;
+      }
+      mosaicData.data.forEach(element => {
+        const dataType = getMimeType(element.data);
+        switch (dataType) {
+          case 'image/png;':
+          case 'image/jpeg;':
+            if (onChainDataArea.getAttribute('src') === 'nodata.png') {
+              onChainDataArea.setAttribute('src', element.data);
+            }
+            break;
+        
+          case 'audio/mpeg;':
+            const elem = document.createElement("audio");
+            elem.src = element.data;
+            elem.play();
+            break;
+        
+          default:
+            break;
+        }
+      });
+    }
+
+    function getMimeType(data) {
+      const startIdx = ('string' === typeof(data)) ? data.indexOf('data:') : -1;
+      const endIdx = (-1 < startIdx) ? data.indexOf('base64', startIdx) : -1;
+      return ((-1 < startIdx) && (-1 < endIdx)) ? data.substring(startIdx + 'data:'.length, endIdx) : null;
     }
 
     // オンチェーンデータの取得
@@ -98,7 +141,7 @@
           return null;
         }
         // オンチェーンデータの取得
-        const onChainData = await getEBPOnChainData(mosaicInfo.mosaicId, mosaicInfo.owner);
+        const onChainData = await getEBPOnChainData(mosaicInfo.mosaicId, mosaicInfo.height, mosaicInfo.owner);
         mosaicInfo.data = (null !== onChainData && 0 < onChainData.length) ? onChainData : null;
         return mosaicInfo;
       } catch (error) {
@@ -147,7 +190,7 @@
     }
 
     // オリジナルフォーマット（eternal-book-protocol）で保存したデータを取得する
-    async function getEBPOnChainData(mosaicIdStr, ownerAddress) {
+    async function getEBPOnChainData(mosaicIdStr, fromHeight, ownerAddress) {
       const PROTOCOL_NAME = 'eternal-book-protocol';  // プロトコル名
       const address = sym.Address.createFromRawAddress(ownerAddress);
       try {
@@ -162,6 +205,7 @@
             ],
             address: address,
             group: sym.TransactionGroup.Confirmed,
+            fromHeight: fromHeight,
             pageSize: 100
           }).toPromise();
           allAggTxes = allAggTxes.concat(aggTxes.data);
