@@ -29,6 +29,7 @@
     <title>マネージャーちゃんのWebAR</title>
   </head>
   <body style="margin: 0; overflow: hidden">
+    <div id="debug"></div>
 	  
     <!-- A-FrameにAR.jsを紐づけ、VRボタン非表示、深度バッファ追加 -->
     <a-scene vr-mode-ui='enabled: false' arjs='sourceType: webcam; videoTexture: true; debugUIEnabled: false'
@@ -50,6 +51,14 @@
         scale="10 10 10"
       ></a-entity>
 
+      <a-text
+        id="text"
+        value=""
+        look-at="[gps-projected-camera]"
+        scale="30 30 30"
+        position="0 55 0"
+      ></a-text>
+
       <!-- カメラを追加 -->
       <a-camera arjs-look-controls='smoothingFactor: 0.1' gps-projected-camera='gpsMinDistance: 5' rotation-reader></a-camera>
     </a-scene>
@@ -61,6 +70,11 @@
         const longitude = searchParams.get('longitude');
       model = document.getElementById('entity');
       model.setAttribute('gps-projected-entity-place', 'latitude: ' + latitude + '; longitude: ' + longitude + ';');
+        const text = document.getElementById('text');
+        text.addEventListener('gps-entity-place-update-positon', (event) => {
+        document.getElementById('debug').textContent = `あと${event.detail.distance}m`;
+          text.setAttribute('value', text.getAttribute('distanceMsg') + ' left');
+      });
       setTimeout(() => {
         // クエリパラメータでデータが与えられている場合は自動読み込み
         const searchParams = new URLSearchParams(window.location.search);
