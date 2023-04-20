@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- A-Frame を読み込む -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    <!-- AR.js を読み込む -->
+    <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+    <!-- symbol-sdk を読み込む -->
+    <script src="https://xembook.github.io/nem2-browserify/symbol-sdk-pack-2.0.4.js"></script>
+    <script>
+      NODE = "https://vmi831828.contaboserver.net:3001"; //現在開いているページのURLがここに入ります
+      sym = require("/node_modules/symbol-sdk");
+      repo = new sym.RepositoryFactoryHttp(NODE);
+      txRepo = repo.createTransactionRepository();
+      mosaicRepo = repo.createMosaicRepository();
+      blockRepo = repo.createBlockRepository();
+      (async() =>{
+          networkType = await repo.getNetworkType().toPromise();
+          generationHash = await repo.getGenerationHash().toPromise();
+          epochAdjustment = await repo.getEpochAdjustment().toPromise();
+      })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+    <title>マネージャーちゃんのWebAR</title>
+  </head>
+  <body style="margin: 0; overflow: hidden">
+	  
+    <!-- A-FrameにAR.jsを紐づけ、VRボタン非表示、深度バッファ追加 -->
+    <a-scene embedded arjs vr-mode-ui="enabled: false;" renderer="logarithmicDepthBuffer: true;">
+	    
+      <!-- マーカーの.pattファイルを読み込む -->
+      <a-marker type="pattern" url="pattern.patt">
+        <a-entity  animation="property: object3D.position.y; to: 2.5; dir: alternate; dur: 1000; loop: true"> 
+          <a-image id="chainData" src="nodata.png" width="4" height="4" position="0 -0.2 -5"></a-image>
+        </a-entity>
+      </a-marker>
+
+      <!-- カメラを追加 -->
+      <a-entity camera></a-entity>
+    </a-scene>
+  </body>
+  <script>
+    window.addEventListener('DOMContentLoaded', function() {
+      setTimeout(() => {
+        // クエリパラメータでデータが与えられている場合は自動読み込み
+        const searchParams = new URLSearchParams(window.location.search);
+      console.log(searchParams);
+        if (!searchParams.has('mosaicId') || !searchParams.has('netType')) {
+          return;
+        }
+        
+        // パラメータの取得と検証
+        const queryMosaicId = searchParams.get('mosaicId');
+        const queryNetType = searchParams.get('netType');
+        netType = -1;
+        switch (queryNetType) {
+          // case '104':
+          // case 'main':
+          //   netType = "104";
+          //   break;
+
+          case '152':
+          case 'test':
+            netType = "152";
+            break;
+
+          default:
+            return;
+        }
+        getOnChainImage(queryMosaicId, netType);
+      }, 3000);
+    });
+
+    async function getOnChainImage(mosaicId, netType) {
+      mosaicData = await getOnChainData(mosaicId, netType);
+      console.log(mosaicData);
+      if (null === mosaicData) {
+        onChainDataArea.setAttribute('src', 'nodata.png');
+        return;
+      }
+      if (null === mosaicData.data || 0 === mosaicData.data.length) {
+        onChainDataArea.setAttribute('src', 'nodata.png');
+        return;
+      }
+      onChainDataArea = document.getElementById('chainData');
+      mosaicData.data.forEach(element => {
+        const dataType = getMimeType(element.data);
+        switch (dataType) {
+          case 'image/png;':
+          case 'image/jpeg;':
+            if (onChainDataArea.getAttribute('src') === 'nodata.png') {
+              onChainDataArea.setAttribute('src', element.data);
+            }
+            break;
+        
+          case 'audio/mpeg;':
+            const elem = document.createElement("audio");
+            elem.src = element.data;
+            elem.play();
+            break;
+        
+          default:
+            break;
+        }
+      });
+    }
+
+    function getMimeType(data) {
+      const startIdx = ('string' === typeof(data)) ? data.indexOf('data:') : -1;
+      const endIdx = (-1 < startIdx) ? data.indexOf('base64', startIdx) : -1;
+      return ((-1 < startIdx) && (-1 < endIdx)) ? data.substring(startIdx + 'data:'.length, endIdx) : null;
+    }
+
+    // オンチェーンデータの取得
+    async function getOnChainData(mosaicIdStr, netType) {
+      // リポジトリ設定
+
+      try {
+        // モザイク情報の取得
+        const mosaicInfo = await getMosaicInfo(mosaicIdStr);
+        if (null === mosaicInfo) {
+          return null;
+        }
+        // オンチェーンデータの取得
+        const onChainData = await getEBPOnChainData(mosaicInfo.mosaicId, mosaicInfo.height, mosaicInfo.owner);
+        mosaicInfo.data = (null !== onChainData && 0 < onChainData.length) ? onChainData : null;
+        return mosaicInfo;
+      } catch (error) {
+        console.log(error);
+        return null;
+      }
+    }
+
+    // モザイク情報を取得する
+    async function getMosaicInfo(mosaicIdStr) {
+      // 入力チェック
+      if ('' === mosaicIdStr) {
+        return null;
+      }
+
+      // モザイク情報の復元
+      const mosaicId = new sym.MosaicId(mosaicIdStr);
+      const mosaicInfo = await mosaicRepo.getMosaic(mosaicId).toPromise();
+      // モザイク情報を抽出
+      const mosaicInfoData = {};
+      mosaicInfoData.mosaicId = mosaicInfo.id.toHex();
+      mosaicInfoData.supply = mosaicInfo.supply.toString();
+      mosaicInfoData.height = mosaicInfo.startHeight.toString();
+      mosaicInfoData.owner = mosaicInfo.ownerAddress.address;
+      mosaicInfoData.supplyMutable = mosaicInfo.flags.supplyMutable;
+      mosaicInfoData.transferable = mosaicInfo.flags.transferable;
+      mosaicInfoData.restrictable = mosaicInfo.flags.restrictable;
+      mosaicInfoData.revokable = mosaicInfo.flags.revokable;
+
+      // // モザイクが作成されたブロックのタイムスタンプを算出
+      // const mosaicBlockInfo = await blockRepo.getBlockByHeight(mosaicInfo.startHeight).toPromise();
+      // const timestamp = (epochAdjustment * 1000) + Number(mosaicBlockInfo.timestamp.toString());
+      // const dateTime = new Date(timestamp);
+      // mosaicInfoData.date = dateTime.toLocaleDateString('ja-JP') + ' ' + dateTime.toLocaleTimeString('ja-JP');
+
+      // // モザイクにリンクされているネームスペースを取得
+      // mosaicInfoData.alias = null;
+      // const mosaicsName = await nsRepo.getMosaicsNames([mosaicId]).toPromise();
+      // if (0 < mosaicsName.length) {
+      //   const names = mosaicsName.find(name => (name.mosaicId.toString() === mosaicId.toString()));
+      //   if (0 < names.names.length) {
+      //     mosaicInfoData.alias = names.names[0].name;
+      //   }
+      // }
+      return mosaicInfoData;
+    }
+
+    // オリジナルフォーマット（eternal-book-protocol）で保存したデータを取得する
+    async function getEBPOnChainData(mosaicIdStr, fromHeight, ownerAddress) {
+      const PROTOCOL_NAME = 'eternal-book-protocol';  // プロトコル名
+      const address = sym.Address.createFromRawAddress(ownerAddress);
+      try {
+        // アカウントのアグリゲートトランザクションを全て取得
+        let allAggTxes = [];
+        let isLastPage = false;
+        while (!isLastPage) {
+          const aggTxes = await txRepo.search({
+            type:[
+              sym.TransactionType.AGGREGATE_COMPLETE,
+              sym.TransactionType.AGGREGATE_BONDED,
+            ],
+            address: address,
+            group: sym.TransactionGroup.Confirmed,
+            fromHeight: fromHeight,
+            pageSize: 100
+          }).toPromise();
+          allAggTxes = allAggTxes.concat(aggTxes.data);
+          isLastPage = aggTxes.isLastPage;
+        }
+
+        // オンチェーンデータアグリゲートの取得
+        const onChainDataAggTxes = [];
+        for (let idx = 0; idx < allAggTxes.length; idx++) {
+          const aggTx = await txRepo.getTransaction(
+            allAggTxes[idx].transactionInfo.hash,
+            sym.TransactionGroup.Confirmed
+          ).toPromise();
+
+          // アグリゲート内トランザクションの検証
+          const txes = aggTx.innerTransactions.filter(tx => (
+            (tx.type === sym.TransactionType.TRANSFER)
+            && (tx.signer.address.address === tx.recipientAddress.address)
+          ));
+          if (0 === aggTx.innerTransactions.length) {
+            // アグリゲート内にトランザクションが存在しない場合は無効データ
+            continue;
+          }
+          if (aggTx.innerTransactions.length !== txes.length) {
+            // アグリゲート内の全てのトランザクションが自分から自分への転送トランザクションではない場合は無効データ
+            continue;
+          }
+
+          // ヘッダ復号
+          const dataHeader = decryptoHeader(mosaicIdStr, aggTx.innerTransactions[0].message.payload);
+          if (null === dataHeader) {
+            continue;
+          }
+          // ヘッダ検証
+          if (PROTOCOL_NAME !== dataHeader.version.substr(0, PROTOCOL_NAME.length)){
+            // プロトコル不一致
+            continue;
+          }
+          if ((mosaicIdStr !== dataHeader.mosaicId) || (ownerAddress !== dataHeader.address)){
+            // モザイク情報不一致
+            continue;
+          }
+
+          // オンチェーンデータアグリゲートとして記録
+          onChainDataAggTxes.push({
+            header: dataHeader,
+            aggregateTx: aggTx,
+          });
+        }
+        // オンチェーンデータアグリゲートが存在しない場合は終了
+        if (0 === onChainDataAggTxes.length) {
+          return null;
+        }
+
+        // オンチェーンデータの最終データを集める
+        const lastDatas = onChainDataAggTxes.filter(aggTx => ('hash' in aggTx.header));
+        // ブロック高順にソート
+        const sortedLastDatas = lastDatas.sort(function(a, b) {
+          if (Number(a.aggregateTx.transactionInfo.height) > Number(b.aggregateTx.transactionInfo.height)) {return 1;} else {return -1;}
+        });
+
+        // オンチェーンデータの復元
+        const onChainDatas = [];
+        for(let idxLastData = 0; idxLastData < sortedLastDatas.length; idxLastData++){
+          // 検証のためのハッシュを取得
+          const verifyHash = sortedLastDatas[idxLastData].header.hash;
+          const timestamp = (epochAdjustment * 1000) + Number(sortedLastDatas[idxLastData].aggregateTx.transactionInfo.timestamp.toString());
+          const dateTime = new Date(timestamp);
+
+          // 末尾のデータから遡ってオンチェーンデータを復元
+          let onChainData = '';
+          let nowAggTx = sortedLastDatas[idxLastData];
+          while (true) {
+            // 1つのアグリゲートに記録されているデータを抽出
+            let innerData = '';
+            for(let idx = 1; idx < nowAggTx.aggregateTx.innerTransactions.length; idx++){
+              innerData += nowAggTx.aggregateTx.innerTransactions[idx].message.payload;
+            }
+            onChainData = innerData + onChainData;
+
+            // 先頭データの場合は終了
+            if (null === nowAggTx.header.prevTx) {
+              break;
+            }
+
+            // 1つ前のアグリゲートトランザクションを検索
+            const prevAggTx = onChainDataAggTxes.filter(aggTx => (nowAggTx.header.prevTx === aggTx.aggregateTx.transactionInfo.hash));
+            if (0 === prevAggTx.length) {
+              // 存在しない場合は復元終了
+              break;
+            } else if (1 < prevAggTx.length) {
+              // ありえないはずのため、ログ出力のみ
+              console.log('transaction duplicated!');
+            }
+            nowAggTx = prevAggTx[0];
+          }
+
+          // 復元したデータのハッシュとトランザクションに保持しているハッシュを検証
+          const hash = CryptoJS.SHA512(onChainData).toString(CryptoJS.enc.Hex);
+          if(hash === verifyHash) {
+            // ハッシュが一致する場合のみ正しいオンチェーンデータとして扱う
+            onChainDatas.push({
+              title: nowAggTx.header.title,
+              description: nowAggTx.header.description,
+              date: dateTime.toLocaleDateString('ja-JP') + ' ' + dateTime.toLocaleTimeString('ja-JP'),
+              data: onChainData,
+            });
+          }
+        }
+        return onChainDatas;
+      } catch (error) {
+        // エラー発生時はエラー情報を出力
+        console.log(error);
+      }
+      return null;
+    }
+
+    // ヘッダの復元
+    function decryptoHeader(mosaicIdStr, encryptoDataStr) {
+      try {
+        Buffer = require("/node_modules/buffer").Buffer;
+        const encryptedData = Buffer.from(encryptoDataStr, 'hex');
+        const key = CryptoJS.enc.Utf8.parse('EternalBookProtocol-OnChainData.');
+        const iv = CryptoJS.enc.Utf8.parse(mosaicIdStr);
+        const encryptedCP = CryptoJS.enc.Hex.parse(encryptoDataStr);
+        const srcs = CryptoJS.enc.Base64.stringify(encryptedCP);
+        const decryptedData = CryptoJS.AES.decrypt(srcs, key, {
+          iv: iv,
+          mode: CryptoJS.mode.CBC
+        });
+        return JSON.parse(decryptedData.toString(CryptoJS.enc.Utf8));
+      } catch (error) {
+        // 仕様に合わない暗号化データ、またはJSONのため無効データと判定する
+        console.log(error);
+      }
+      return null;
+    }
+  </script>
+</html>
