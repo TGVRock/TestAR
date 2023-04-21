@@ -10,7 +10,7 @@
     <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
     <!-- アニメーションするのに必要 -->
     <script src="https://cdn.jsdelivr.net/gh/donmccurdy/aframe-extras@v6.1.1/dist/aframe-extras.min.js"></script>
-    <title>任意のページタイトル</title>
+    <title>チャリできた</title>
   </head>
   <body style="margin: 0; overflow: hidden">
 	  
@@ -19,15 +19,21 @@
 	    
       <!-- 3DCGモデルを読み込む -->
       <a-assets>
-	      <!-- <a-asset-item id="tiger" src="tiger.glb"></a-asset-item> -->
-	      <a-asset-item id="tiger" src="empty.gltf"></a-asset-item>
+	      <a-asset-item id="bicycle" src="bicycle.glb"></a-asset-item>
+	      <a-asset-item id="bicycle_anime" src="bicycle_anime.glb"></a-asset-item>
       </a-assets>
 
-      <!-- マーカーの.pattファイルを読み込む -->
-      <a-marker type="pattern" url="pattern.patt">
-        <!-- 3Dモデルを呼び出す -->
-        <a-entity gltf-model="#tiger" animation-mixer></a-entity>
-      </a-marker>
+      <!-- 3Dモデルを呼び出す -->
+      <a-entity gltf-model="#bicycle" rotation="0 30 0" position="-1 -0.6 -12"></a-entity>
+      <a-entity gltf-model="#bicycle" rotation="0 30 0" position="-0.5 -0.7 -11"></a-entity>
+      <a-entity gltf-model="#bicycle" rotation="0 30 0" position="0 -0.8 -10"></a-entity>
+      <a-entity gltf-model="#bicycle" rotation="0 30 0" position="1 -1 -8"></a-entity>
+      <a-entity gltf-model="#bicycle" rotation="0 30 0" position="1.5 -1.1 -7"></a-entity>
+      <a-entity gltf-model="#bicycle" rotation="0 30 0" position="2 -1.2 -6"></a-entity>
+      <a-entity gltf-model="#bicycle_anime" rotation="0 -45 0" animation-mixer
+        animation="property: position; from: -7 0 -12; to: 5 -2 0; dur: 10000; loop: true"
+      >
+      </a-entity>
 
       <!-- カメラを追加 -->
       <a-entity camera></a-entity>
